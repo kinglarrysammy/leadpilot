@@ -1,83 +1,87 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   try {
     const { messages, step, leadData } = req.body
-    
+
+    // Log for debugging
+    console.log('API Key exists:', !!process.env.GEMINI_API_KEY)
+    console.log('Step:', step)
+    console.log('Message count:', messages.length)
+
+    // Check if API key exists
+    if (!process.env.GEMINI_API_KEY) {
+      console.error('GEMINI_API_KEY is missing')
+      return res.status(500).json({ error: 'API key not configured' })
+    }
+
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
     const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
 
-    // Build conversation history for Gemini
-    const chat = model.startChat({
-      history: messages.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-      }))
-    })
-
-    // Get last user message
+    // Build conversation
     const lastMessage = messages[messages.length - 1].text
 
-    // System prompt to guide the conversation
-    const systemPrompt = `
+    // Simple prompt without history to avoid issues
+    const prompt = `
 You are LeadPilot, a real estate lead qualification chatbot.
 
-Your goal: Ask ONE question at a time to collect these 7 pieces of info in order:
-1. Intent (buy/rent/invest) - ALREADY ASKED in initial message
-2. Location preference (city/area)
-3. Budget range
-4. Timeline (when they want to move)
-5. Full name
-6. Phone number
-7. Email address
-
-Current collected data:
-${JSON.stringify(leadData, null, 2)}
-
 Current step: ${step}
+Current lead data: ${JSON.stringify(leadData)}
+
+Previous conversation:
+${messages.map(m => `${m.role}: ${m.text}`).join('\n')}
+
+User's last message: ${lastMessage}
 
 Rules:
-- Ask ONLY ONE question per response
-- Keep responses friendly and conversational
-- If they give multiple pieces at once, acknowledge and extract them
-- Move to next question when current info is collected
-- When all 7 are collected, say "Great! I have everything I need. An agent will contact you shortly." and include a summary
+- Ask ONE question at a time
+- Keep responses short and friendly
+- Collect in this order: intent, location, budget, timeline, name, phone, email
+- When all collected, say "Great! I have everything I need. An agent will contact you shortly."
 
-Previous messages show the conversation. Respond naturally as a helpful real estate assistant.
+Respond naturally as a helpful real estate assistant.
 `
 
-    const result = await chat.sendMessage(`${systemPrompt}\n\nUser: ${lastMessage}`)
+    const result = await model.generateContent(prompt)
     const reply = result.response.text()
 
-    // Simple logic to track step progression
+    // Simple step tracking
     let newStep = step
     let newLeadData = { ...leadData }
     let leadComplete = false
 
-    // Extract info based on step (simplified - will be improved)
-    if (step === 0 && (lastMessage.toLowerCase().includes('buy') || lastMessage.toLowerCase().includes('rent') || lastMessage.toLowerCase().includes('invest'))) {
+    if (step === 0) {
       newLeadData.intent = lastMessage
       newStep = 1
-    } else if (step === 1 && lastMessage.length > 2) {
+    } else if (step === 1) {
       newLeadData.location = lastMessage
       newStep = 2
-    } else if (step === 2 && lastMessage.length > 2) {
+    } else if (step === 2) {
       newLeadData.budget = lastMessage
       newStep = 3
-    } else if (step === 3 && lastMessage.length > 2) {
+    } else if (step === 3) {
       newLeadData.timeline = lastMessage
       newStep = 4
-    } else if (step === 4 && lastMessage.length > 2) {
+    } else if (step === 4) {
       newLeadData.name = lastMessage
       newStep = 5
-    } else if (step === 5 && lastMessage.length > 2) {
+    } else if (step === 5) {
       newLeadData.phone = lastMessage
       newStep = 6
-    } else if (step === 6 && lastMessage.includes('@')) {
+    } else if (step === 6) {
       newLeadData.email = lastMessage
       newStep = 7
       leadComplete = true
@@ -91,7 +95,10 @@ Previous messages show the conversation. Respond naturally as a helpful real est
     })
 
   } catch (error) {
-    console.error('Error:', error)
-    res.status(500).json({ error: 'Failed to process message' })
+    console.error('Error details:', error)
+    res.status(500).json({ 
+      error: 'Failed to process message',
+      details: error.message 
+    })
   }
-}
+      }
