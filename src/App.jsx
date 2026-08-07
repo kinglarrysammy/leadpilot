@@ -21,25 +21,30 @@ function App() {
     if (!input.trim() || isLoading) return
 
     const userMessage = input.trim()
-    setMessages(prev => [...prev, { role: 'user', text: userMessage }])
+    const updatedMessages = [...messages, { role: 'user', text: userMessage }]
+    
+    setMessages(updatedMessages)
     setInput('')
     setIsLoading(true)
 
     try {
-      // Get AI response
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, { role: 'user', text: userMessage }],
+          messages: updatedMessages,
           step,
           leadData
         })
       })
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
       
-      setMessages(prev => [...prev, { role: 'bot', text: data.reply }])
+      setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I didn't understand that." }])
       
       if (data.step !== undefined) {
         setStep(data.step)
@@ -49,16 +54,20 @@ function App() {
         setLeadData(data.leadData)
       }
 
-      // If lead is complete, extract and save
       if (data.leadComplete) {
-        await fetch('/api/extract-lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversation: [...messages, { role: 'user', text: userMessage }],
-            leadData: { ...leadData, ...data.leadData }
+        try {
+          await fetch('/api/extract-lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversation: updatedMessages,
+              leadData: { ...leadData, ...data.leadData }
+            })
           })
-        })
+        } catch (extractError) {
+          console.error('Extract error:', extractError)
+          // Don't show error to user, lead might still save later
+        }
       }
 
     } catch (error) {
