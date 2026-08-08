@@ -28,9 +28,9 @@ function App() {
     setIsLoading(true)
 
     try {
-      console.log('Sending to /api/chat...')
+      console.log('Sending to /api/chat-simple...')
       
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/chat-simple', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
