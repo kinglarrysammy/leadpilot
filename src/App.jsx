@@ -28,6 +28,8 @@ function App() {
     setIsLoading(true)
 
     try {
+      console.log('Sending to /api/chat...')
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -38,11 +40,16 @@ function App() {
         })
       })
 
+      console.log('Response status:', response.status)
+
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Error response:', errorText)
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log('Data received:', data)
       
       setMessages(prev => [...prev, { role: 'bot', text: data.reply || "I didn't understand that." }])
       
@@ -66,15 +73,14 @@ function App() {
           })
         } catch (extractError) {
           console.error('Extract error:', extractError)
-          // Don't show error to user, lead might still save later
         }
       }
 
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error details:', error)
       setMessages(prev => [...prev, { 
         role: 'bot', 
-        text: "Sorry, I'm having trouble connecting. Please try again." 
+        text: `Sorry, I'm having trouble connecting. Error: ${error.message}` 
       }])
     } finally {
       setIsLoading(false)
